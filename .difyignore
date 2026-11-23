@@ -1,0 +1,21 @@
+# Development state and files that are not needed when the plugin runs.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.difypkg
+# Tests, the submission notes and developer tooling stay in the source repository only.
+tests/
+SUBMITTING.md
+requirements-dev.txt
+pytest.ini

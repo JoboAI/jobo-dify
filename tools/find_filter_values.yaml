@@ -1,0 +1,73 @@
+identity:
+  name: find_filter_values
+  author: jobo
+  label:
+    en_US: Find filter values
+description:
+  human:
+    en_US: 'List the values a search filter accepts, with live job counts. Free: not billed (it still
+      counts toward rate limits).'
+  llm: 'List the values a search_jobs filter accepts, with live job counts. Free: not billed. Call it
+    before filtering on one of these, because a value the index does not hold matches no jobs and the
+    API does not say so. For occupations, pass the occupation''s name as the query to get the ids the
+    `occupation_ids` filter takes. For companies use find_companies.'
+parameters:
+- name: facet
+  type: select
+  required: true
+  label:
+    en_US: Facet
+  human_description:
+    en_US: Which filter's values to list.
+  llm_description: 'Which filter''s values to list: sources (ATS providers), industries, skills, company_categories,
+    job_categories, job_subcategories or occupations.'
+  form: llm
+  options:
+  - value: sources
+    label:
+      en_US: sources
+  - value: industries
+    label:
+      en_US: industries
+  - value: skills
+    label:
+      en_US: skills
+  - value: company_categories
+    label:
+      en_US: company_categories
+  - value: job_categories
+    label:
+      en_US: job_categories
+  - value: job_subcategories
+    label:
+      en_US: job_subcategories
+  - value: occupations
+    label:
+      en_US: occupations
+- name: query
+  type: string
+  required: false
+  label:
+    en_US: Query
+  human_description:
+    en_US: Optional text to narrow the list. For occupations it is searched in the occupation names, for
+      the others a value must start with it.
+  llm_description: Optional text to narrow the list. For occupations it is searched in the occupation
+    names, e.g. "nurse". For the other facets a value must start with it, e.g. "soft". Leave it out for
+    the most common values.
+  form: llm
+- name: limit
+  type: number
+  required: false
+  label:
+    en_US: Maximum values
+  human_description:
+    en_US: Maximum number of values to return (1-50).
+  llm_description: Maximum number of values to return (1-50).
+  form: llm
+  default: 20
+  min: 1
+  max: 50
+extra:
+  python:
+    source: tools/find_filter_values.py

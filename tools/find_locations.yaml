@@ -1,0 +1,39 @@
+identity:
+  name: find_locations
+  author: jobo
+  label:
+    en_US: Find locations
+description:
+  human:
+    en_US: 'Resolve a place name to the locations Search jobs takes, using the free typeahead. Free: not
+      billed (it still counts toward rate limits).'
+  llm: 'Resolve a place name to the locations search_jobs takes. Free: not billed (this uses the free
+    connector typeahead, not the billed geocode endpoint). Returns matching cities, regions and countries
+    written the way the `location` filter of search_jobs takes them. search_jobs already resolves a free-form
+    location by itself, so use this for an ambiguous name such as "Springfield", or when a search reports
+    a location it could not resolve.'
+parameters:
+- name: query
+  type: string
+  required: true
+  label:
+    en_US: Place name
+  human_description:
+    en_US: A place name or the start of one, at least 2 characters, such as Springfield or Berl.
+  llm_description: A place name or the start of one, at least 2 characters, e.g. "Springfield" or "Berl".
+  form: llm
+- name: limit
+  type: number
+  required: false
+  label:
+    en_US: Maximum places
+  human_description:
+    en_US: Maximum number of places to return (1-10).
+  llm_description: Maximum number of places to return (1-10).
+  form: llm
+  default: 5
+  min: 1
+  max: 10
+extra:
+  python:
+    source: tools/find_locations.py

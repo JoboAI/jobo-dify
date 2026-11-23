@@ -1,0 +1,40 @@
+identity:
+  name: find_companies
+  author: jobo
+  label:
+    en_US: Find companies
+description:
+  human:
+    en_US: 'Look up companies by the start of their name or website domain. Free: not billed (it still
+      counts toward rate limits).'
+  llm: 'Look up companies by the start of their name or website domain. Free: not billed. Returns each
+    matching company''s name, domain, country, live job count and Jobo company ids. Pass all of a company''s
+    ids as the `companies` filter of search_jobs to search that company''s jobs exactly (a name alone
+    matches every company with that name).'
+parameters:
+- name: query
+  type: string
+  required: true
+  label:
+    en_US: Company name or domain
+  human_description:
+    en_US: The start of a company name or of its website domain, at least 2 characters, such as strip
+      or stripe.com.
+  llm_description: The start of a company name or of its website domain, at least 2 characters, e.g. "strip"
+    or "stripe.com".
+  form: llm
+- name: limit
+  type: number
+  required: false
+  label:
+    en_US: Maximum companies
+  human_description:
+    en_US: Maximum number of companies to return (1-20).
+  llm_description: Maximum number of companies to return (1-20).
+  form: llm
+  default: 5
+  min: 1
+  max: 20
+extra:
+  python:
+    source: tools/find_companies.py

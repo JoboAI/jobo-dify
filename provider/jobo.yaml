@@ -1,0 +1,32 @@
+identity:
+  author: jobo
+  name: jobo
+  label:
+    en_US: Jobo
+  description:
+    en_US: Search live job listings from employer career sites and ATS platforms with the Jobo jobs API.
+  icon: icon.svg
+  tags:
+  - search
+  - business
+credentials_for_provider:
+  jobo_api_key:
+    type: secret-input
+    required: true
+    label:
+      en_US: Jobo API key
+    placeholder:
+      en_US: Paste your Jobo API key
+    help:
+      en_US: Create an API key in the Jobo dashboard. Job search is billed per job returned; the lookup
+        tools and job details are free.
+    url: https://enterprise.jobo.world/api-keys
+tools:
+- tools/search_jobs.yaml
+- tools/get_job.yaml
+- tools/find_companies.yaml
+- tools/find_filter_values.yaml
+- tools/find_locations.yaml
+extra:
+  python:
+    source: provider/jobo.py

@@ -1,0 +1,252 @@
+identity:
+  name: search_jobs
+  author: jobo
+  label:
+    en_US: Search jobs
+description:
+  human:
+    en_US: Search live job listings from employer career sites and ATS platforms. Billed per job returned;
+      an empty result costs nothing. Jobs included in your plan are used before the wallet is charged.
+  llm: Search live job listings from employer career sites and ATS platforms. BILLED per job returned
+    (an empty result costs nothing), so keep page_size small and do not repeat a search you already have
+    the answer to. Filters combine with AND; several values inside one filter combine with OR. A filter
+    value the index does not hold silently matches nothing, so look values up first (free) with find_filter_values,
+    find_companies and find_locations. Returns a summary (total matches, page, warnings) and one entry
+    per job with ID, title, company, location, salary when stated, posted date and URL. Use get_job with
+    an ID for the full posting.
+parameters:
+- name: query
+  type: string
+  required: false
+  label:
+    en_US: Query
+  human_description:
+    en_US: Free-text query, such as a job title or a skill. Wrap it in double quotes for an exact title
+      phrase.
+  llm_description: Free-text query, for example a job title or skill. Wrap it in double quotes for an
+    exact title phrase match.
+  form: llm
+- name: location
+  type: string
+  required: false
+  label:
+    en_US: Location
+  human_description:
+    en_US: A city, region or country such as Berlin, Germany. Separate several places with semicolons.
+  llm_description: A city, region or country such as "Berlin, Germany". Several places go in one string
+    separated by semicolons (a job in any of them matches). Use find_locations (free) for an ambiguous
+    name.
+  form: llm
+- name: work_model
+  type: string
+  required: false
+  label:
+    en_US: Work model
+  human_description:
+    en_US: remote, hybrid or onsite. Separate several with commas.
+  llm_description: Any of remote, hybrid, onsite, comma-separated.
+  form: llm
+- name: employment_type
+  type: string
+  required: false
+  label:
+    en_US: Employment type
+  human_description:
+    en_US: full-time, part-time, contract, internship, freelance or temporary. Separate several with commas.
+  llm_description: Any of full-time, part-time, contract, internship, freelance, temporary, comma-separated.
+  form: llm
+- name: experience_level
+  type: string
+  required: false
+  label:
+    en_US: Experience level
+  human_description:
+    en_US: intern, entry, mid, senior, lead or executive. Separate several with commas.
+  llm_description: Any of intern, entry, mid, senior, lead, executive, comma-separated.
+  form: llm
+- name: skills
+  type: string
+  required: false
+  label:
+    en_US: Skills
+  human_description:
+    en_US: Require skills such as Python or Kubernetes, comma-separated.
+  llm_description: Require skills such as Python or Kubernetes, comma-separated. Look values up first
+    with find_filter_values (facet skills).
+  form: llm
+- name: exclude_skills
+  type: string
+  required: false
+  label:
+    en_US: Exclude skills
+  human_description:
+    en_US: Leave out jobs that ask for any of these skills, comma-separated.
+  llm_description: Leave out jobs asking for any of these skills, comma-separated.
+  form: llm
+- name: companies
+  type: string
+  required: false
+  label:
+    en_US: Companies
+  human_description:
+    en_US: 'Only jobs at these companies: Jobo company ids, website domains such as stripe.com, or whole
+      company names. Separate several with semicolons.'
+  llm_description: 'Only jobs at these companies. Each value is a Jobo company id, a website domain (stripe.com)
+    or a whole company name, separated by semicolons. Names match whole, never partially: use the ids
+    from find_companies (free) for an exact match.'
+  form: llm
+- name: exclude_companies
+  type: string
+  required: false
+  label:
+    en_US: Exclude companies
+  human_description:
+    en_US: Leave out jobs at these companies (ids, domains or whole names), separated by semicolons.
+  llm_description: Leave out jobs at these companies (ids, domains or whole names), separated by semicolons.
+  form: llm
+- name: industries
+  type: string
+  required: false
+  label:
+    en_US: Industries
+  human_description:
+    en_US: Industry names exactly as find_filter_values lists them. Separate several with semicolons.
+  llm_description: Industry names, exactly as find_filter_values lists them (facet industries), separated
+    by semicolons.
+  form: llm
+- name: job_categories
+  type: string
+  required: false
+  label:
+    en_US: Job categories
+  human_description:
+    en_US: Occupation category names such as Healthcare. Separate several with semicolons.
+  llm_description: Occupation category names such as "Healthcare" (facet job_categories in find_filter_values),
+    separated by semicolons.
+  form: llm
+- name: occupation_ids
+  type: string
+  required: false
+  label:
+    en_US: Occupation ids
+  human_description:
+    en_US: Occupation ids, not names, comma-separated. Look them up with Find filter values (facet occupations).
+  llm_description: Occupation ids, not names, comma-separated. Get them from find_filter_values with facet
+    occupations and the occupation's name as the query.
+  form: llm
+- name: sources
+  type: string
+  required: false
+  label:
+    en_US: Sources (ATS)
+  human_description:
+    en_US: ATS provider ids such as greenhouse, lever or workday, comma-separated.
+  llm_description: ATS provider ids such as greenhouse, lever, workday, comma-separated (facet sources
+    in find_filter_values).
+  form: llm
+- name: language
+  type: string
+  required: false
+  label:
+    en_US: Description language
+  human_description:
+    en_US: Description languages as ISO 639-1 codes such as en or de, comma-separated.
+  llm_description: Description languages as ISO 639-1 codes, e.g. en, de, comma-separated.
+  form: llm
+- name: company_categories
+  type: string
+  required: false
+  label:
+    en_US: Company categories
+  human_description:
+    en_US: 'The hiring company''s business model: b2b, b2c, b2b2c, b2g, saas, marketplace, e-commerce,
+      service-provider, hardware, agency, nonprofit, government or education. Comma-separated.'
+  llm_description: 'Hiring company''s business model: b2b, b2c, b2b2c, b2g, saas, marketplace, e-commerce,
+    service-provider, hardware, agency, nonprofit, government, education. Comma-separated.'
+  form: llm
+- name: min_salary_usd
+  type: number
+  required: false
+  label:
+    en_US: Minimum salary (USD)
+  human_description:
+    en_US: Minimum annual salary in USD. Jobs without disclosed pay are excluded when a salary bound is
+      set.
+  llm_description: Minimum annual salary in USD. Jobs without disclosed pay are excluded when a salary
+    bound is set.
+  form: llm
+- name: max_salary_usd
+  type: number
+  required: false
+  label:
+    en_US: Maximum salary (USD)
+  human_description:
+    en_US: Maximum annual salary in USD.
+  llm_description: Maximum annual salary in USD.
+  form: llm
+- name: posted_after
+  type: string
+  required: false
+  label:
+    en_US: Posted after
+  human_description:
+    en_US: Only jobs posted on or after this ISO 8601 date, such as 2026-01-31.
+  llm_description: Only jobs posted on or after this ISO 8601 date or timestamp, e.g. 2026-01-31.
+  form: llm
+- name: posted_before
+  type: string
+  required: false
+  label:
+    en_US: Posted before
+  human_description:
+    en_US: Only jobs posted on or before this ISO 8601 date, such as 2026-01-31.
+  llm_description: Only jobs posted on or before this ISO 8601 date or timestamp.
+  form: llm
+- name: sort
+  type: select
+  required: false
+  label:
+    en_US: Sort
+  human_description:
+    en_US: relevance (default), discovered_asc or discovered_desc (when Jobo first indexed the job).
+  llm_description: relevance (default), discovered_asc or discovered_desc (when Jobo first indexed the
+    job).
+  form: llm
+  default: relevance
+  options:
+  - value: relevance
+    label:
+      en_US: relevance
+  - value: discovered_asc
+    label:
+      en_US: discovered_asc
+  - value: discovered_desc
+    label:
+      en_US: discovered_desc
+- name: page
+  type: number
+  required: false
+  label:
+    en_US: Page
+  human_description:
+    en_US: Page number, starting at 1.
+  llm_description: Page number, starting at 1. Each page is billed for the jobs it returns.
+  form: llm
+  default: 1
+  min: 1
+- name: page_size
+  type: number
+  required: false
+  label:
+    en_US: Jobs to return
+  human_description:
+    en_US: Jobs per page (default 5, at most 25). Every returned job is billed.
+  llm_description: Jobs to return (default 5, at most 25; a larger value is reduced to 25). Every returned
+    job is billed, so keep it small.
+  form: llm
+  default: 5
+  min: 1
+  max: 25
+extra:
+  python:
+    source: tools/search_jobs.py

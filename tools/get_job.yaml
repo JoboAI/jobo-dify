@@ -1,0 +1,37 @@
+identity:
+  name: get_job
+  author: jobo
+  label:
+    en_US: Get job
+description:
+  human:
+    en_US: 'Get the full details of one job listing by its Jobo job ID. Free: not billed (it still counts
+      toward rate limits).'
+  llm: 'Get the full details of one job listing by its Jobo job ID. Free: not billed. Returns the company,
+    location, compensation, responsibilities, qualifications, benefits, the employer''s description and
+    the listing and apply URLs. Use an ID returned by search_jobs. An ID that is unknown or has closed
+    comes back as a plain message, not an error.'
+parameters:
+- name: job_id
+  type: string
+  required: true
+  label:
+    en_US: Job ID
+  human_description:
+    en_US: The Jobo job ID (a UUID), as returned by Search jobs.
+  llm_description: The Jobo job id (a UUID), as returned by search_jobs.
+  form: llm
+- name: include_description
+  type: boolean
+  required: false
+  label:
+    en_US: Include full description
+  human_description:
+    en_US: Append the employer's full description after the structured fields.
+  llm_description: Append the employer's full description after the structured fields. Set false for a
+    shorter answer.
+  form: llm
+  default: true
+extra:
+  python:
+    source: tools/get_job.py
