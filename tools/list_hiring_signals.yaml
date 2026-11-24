@@ -1,0 +1,242 @@
+identity:
+  name: list_hiring_signals
+  author: jobo
+  label:
+    en_US: List hiring signals
+description:
+  human:
+    en_US: 'Hiring signals: events at a company detected from its job postings, such as a hiring surge,
+      a first job in a country, a leadership search, a new technology or a slowdown. Billed per signal
+      returned, at ten times the price of a job, and billed again each time the same signal is read; an
+      empty result costs nothing. Signals included in your plan are used before the wallet is charged.'
+  llm: 'List hiring signals: one event at one company, detected from its job postings (a hiring surge,
+    a new function, a first job in a country or city, a leadership search, a new skill or technology,
+    a hard-to-fill job, a slowdown, a freeze). BILLED per signal returned, at ten times the price of a
+    job, and billed again every time the same signal is read (an empty result costs nothing). So keep limit
+    small, narrow with filters, never read the same signals twice, and do not fetch the next page unless
+    the user asks. Filters combine with AND; several values inside one filter match any of them. Returns
+    newest detection day first: per signal the company and domain, the type, a one-sentence summary, the
+    detection day, the strength (1-100, comparable within one type) and up to five evidence job ids, which
+    get_job reads for free. One call is one request: pass the returned cursor back to read the next page.'
+parameters:
+- name: types
+  type: string
+  required: false
+  label:
+    en_US: Signal types
+  human_description:
+    en_US: 'Only these kinds of signal, comma-separated: hiring_surge, new_function, new_country, leadership_hire,
+      new_skill, hiring_slowdown, first_role, new_technology, function_surge, new_city, hard_to_fill, leadership_role_closed,
+      hiring_freeze or hiring_resumed. Leave empty for every kind.'
+  llm_description: 'Only these kinds of signal, comma-separated. Any of hiring_surge, new_function, new_country,
+    leadership_hire, new_skill, hiring_slowdown, first_role, new_technology, function_surge, new_city, hard_to_fill,
+    leadership_role_closed, hiring_freeze, hiring_resumed. Leave empty for every kind.'
+  form: llm
+- name: domains
+  type: string
+  required: false
+  label:
+    en_US: Company domains
+  human_description:
+    en_US: Only signals at these companies, by website domain such as stripe.com, comma-separated. At most
+      100.
+  llm_description: Only signals at these companies, by website domain, e.g. "stripe.com", comma-separated.
+    At most 100.
+  form: llm
+- name: company_id
+  type: string
+  required: false
+  label:
+    en_US: Company ID
+  human_description:
+    en_US: One company's signals, by Jobo company ID (a UUID). With it, only Signal types, Minimum strength,
+      the date filters, Signals to return and Cursor apply; any other filter is refused.
+  llm_description: Read one company's signals, by Jobo company id (a UUID), such as the Company ID a signal
+    shows. With it, only types, min_strength, detected_after, detected_before, created_after, limit and
+    cursor may be set; any other filter is refused. To pick companies by website use domains instead.
+  form: llm
+- name: countries
+  type: string
+  required: false
+  label:
+    en_US: Company countries
+  human_description:
+    en_US: Countries the companies are headquartered in, as two-letter codes such as US or DE, comma-separated.
+  llm_description: Countries the companies are headquartered in, as two-letter codes, e.g. "US", "DE",
+    comma-separated.
+  form: llm
+- name: company_sizes
+  type: string
+  required: false
+  label:
+    en_US: Company sizes
+  human_description:
+    en_US: 'Headcount bands of the companies, comma-separated: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000,
+      5001-10000 or 10001+.'
+  llm_description: 'Headcount bands of the companies, comma-separated. Any of 1-10, 11-50, 51-200, 201-500,
+    501-1000, 1001-5000, 5001-10000, 10001+.'
+  form: llm
+- name: industries
+  type: string
+  required: false
+  label:
+    en_US: Industries
+  human_description:
+    en_US: Industries of the companies, matched against the primary industry and the industry list. Separate
+      several with semicolons. A value cannot contain a comma.
+  llm_description: Industries of the companies, matched against the primary industry and the industry
+    list, separated by semicolons. A value cannot contain a comma.
+  form: llm
+- name: funding_stages
+  type: string
+  required: false
+  label:
+    en_US: Funding stages
+  human_description:
+    en_US: Latest funding round of the companies, such as Seed or Series A. Separate several with semicolons.
+  llm_description: Latest funding round of the companies, as returned in company.funding_stage, e.g. "Seed",
+    "Series A", separated by semicolons.
+  form: llm
+- name: functions
+  type: string
+  required: false
+  label:
+    en_US: Functions
+  human_description:
+    en_US: Job categories the signal must be about, such as Technology or Sales. Separate several with semicolons.
+      A focus filter.
+  llm_description: Job categories the signal must be about, e.g. "Technology", "Sales", separated by semicolons.
+    A focus filter.
+  form: llm
+- name: roles
+  type: string
+  required: false
+  label:
+    en_US: Roles
+  human_description:
+    en_US: Words or phrases to look for in the job title or occupation behind the signal, such as data engineer,
+      comma-separated. At least 2 characters each. A focus filter.
+  llm_description: Words or phrases to look for in the job title or occupation behind the signal, e.g.
+    "data engineer", comma-separated. At least 2 characters each. A focus filter.
+  form: llm
+- name: seniority
+  type: string
+  required: false
+  label:
+    en_US: Seniority
+  human_description:
+    en_US: 'Seniority of the role behind the signal, comma-separated: junior, mid, senior, director, vp,
+      c_level or executive. A focus filter.'
+  llm_description: 'Seniority of the role behind the signal, comma-separated. Any of junior, mid, senior,
+    director, vp, c_level, executive. A focus filter.'
+  form: llm
+- name: technologies
+  type: string
+  required: false
+  label:
+    en_US: Technologies
+  human_description:
+    en_US: Named tools the signal must be about, such as Snowflake, comma-separated. A focus filter, combined
+      with skills.
+  llm_description: Named tools the signal must be about, e.g. "Snowflake", comma-separated. A focus filter,
+    combined with skills (a signal about any of them matches).
+  form: llm
+- name: skills
+  type: string
+  required: false
+  label:
+    en_US: Skills
+  human_description:
+    en_US: Named skills the signal must be about, comma-separated. A focus filter, combined with technologies.
+  llm_description: Named skills the signal must be about, comma-separated. A focus filter, combined with
+    technologies.
+  form: llm
+- name: job_countries
+  type: string
+  required: false
+  label:
+    en_US: Job countries
+  human_description:
+    en_US: Countries the jobs are in (not the company's headquarters), as two-letter codes, comma-separated.
+      A focus filter.
+  llm_description: Countries the jobs are in (not the company's headquarters), as two-letter codes, comma-separated.
+    A focus filter.
+  form: llm
+- name: min_strength
+  type: number
+  required: false
+  label:
+    en_US: Minimum strength
+  human_description:
+    en_US: Only signals at least this strong. Strength runs from 1 to 100 and compares signals of the same
+      type.
+  llm_description: Only signals at least this strong (1-100). Strength compares signals of the same type.
+  form: llm
+  min: 1
+  max: 100
+- name: detected_after
+  type: string
+  required: false
+  label:
+    en_US: Detected on or after
+  human_description:
+    en_US: Earliest detection day, inclusive, as yyyy-MM-dd.
+  llm_description: Earliest detection day, inclusive, as yyyy-MM-dd, e.g. 2026-11-01.
+  form: llm
+- name: detected_before
+  type: string
+  required: false
+  label:
+    en_US: Detected on or before
+  human_description:
+    en_US: Latest detection day, inclusive, as yyyy-MM-dd.
+  llm_description: Latest detection day, inclusive, as yyyy-MM-dd.
+  form: llm
+- name: created_after
+  type: string
+  required: false
+  label:
+    en_US: Created after
+  human_description:
+    en_US: Only signals first stored after this instant, exclusive (ISO 8601, such as 2026-11-12T09:30:00Z).
+      To read what is new, pass the newest created_at already received.
+  llm_description: Only signals first stored after this instant, exclusive, as ISO 8601, e.g. 2026-11-12T09:30:00Z.
+    To read only what is new, pass the newest created_at already received.
+  form: llm
+- name: exclude_agencies
+  type: boolean
+  required: false
+  label:
+    en_US: Exclude staffing agencies
+  human_description:
+    en_US: Leave out staffing agencies, whose postings are their clients' hiring.
+  llm_description: true leaves out staffing agencies, whose postings are their clients' hiring.
+  form: llm
+- name: limit
+  type: number
+  required: false
+  label:
+    en_US: Signals to return
+  human_description:
+    en_US: Signals to return (default 5, at most 25). Every returned signal is billed at ten times the price
+      of a job.
+  llm_description: Signals to return (default 5, at most 25; a larger value is reduced to 25). Every returned
+    signal is billed at ten times the price of a job, so keep it small.
+  form: llm
+  default: 5
+  min: 1
+  max: 25
+- name: cursor
+  type: string
+  required: false
+  label:
+    en_US: Cursor
+  human_description:
+    en_US: The cursor a previous call returned, to read the next page with the same filters. The next page
+      is billed per signal too.
+  llm_description: The cursor a previous call returned, to read the next page; keep every other argument
+    unchanged. Only pass it when the user wants more, because the next page is billed per signal too.
+  form: llm
+extra:
+  python:
+    source: tools/list_hiring_signals.py

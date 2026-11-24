@@ -9,12 +9,16 @@ It owns the key, the headers and the retry and error rules:
   connect are retried, `Retry-After` is honoured up to `MAX_RETRY_WAIT`, and
   402 is never retried. A 503 without `Retry-After` ("Search took too long")
   fails the same way again, so it is raised at once. A read timeout is not
-  retried either, because a billed page may already have been delivered;
+  retried either, because a billed page may already have been delivered.
+  The two hiring signals paths are billed per signal and billed again when
+  read again, so they are retried only when the API said nothing happened:
+  a 429, or a 503 with `Retry-After`. Never after a 500 or a lost response;
 - errors: every non-2xx response is raised as a typed `JoboAPIError`.
 """
 
 import hashlib
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, Optional
@@ -51,6 +55,10 @@ _RETRYABLE_STATUSES = frozenset({429, 500, 503})
 #: took too long" 503 sends no Retry-After: the same request times out again
 #: and holds a search thread each time.
 _RETRY_ONLY_WHEN_TOLD = frozenset({503})
+#: `GET /api/signals` and `GET /api/companies/{id}/signals`. The API settles
+#: the charge before it answers, so a 500 or a lost response may already have
+#: been paid for, and a replay would pay again.
+_BILLED_PER_READ = re.compile(r"^/api/(?:companies/[^/]+/)?signals/?$")
 
 _ERROR_BY_STATUS: Dict[int, type] = {
     400: JoboValidationError,
@@ -193,11 +201,14 @@ class JoboClient:
     ) -> Reply:
         """Send a request and return the parsed JSON body and metering."""
         kwargs = self._kwargs(method, path, params, json)
+        billed_per_read = _BILLED_PER_READ.match(path) is not None
         attempt = 0
         while True:
             try:
                 return self._attempt(kwargs)
             except _Attempt as failure:
+                if billed_per_read and not _api_said_retry(failure.error):
+                    raise failure.error from failure.__cause__
                 delay = self._delay(failure, attempt)
                 if delay is None:
                     raise failure.error from failure.__cause__
@@ -247,6 +258,15 @@ def _is_retryable(error: JoboAPIError) -> bool:
     if error.status_code in _RETRY_ONLY_WHEN_TOLD:
         return error.retry_after is not None
     return True
+
+
+def _api_said_retry(error: JoboError) -> bool:
+    """Whether the API answered that the request did not run: 429, or 503 with Retry-After."""
+    if not isinstance(error, JoboAPIError):
+        return False
+    return error.status_code == 429 or (
+        error.status_code == 503 and error.retry_after is not None
+    )
 
 
 def _to_seconds(value: Any) -> Optional[float]:

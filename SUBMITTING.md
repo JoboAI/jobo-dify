@@ -17,7 +17,7 @@ They change. Re-read the live PR template and the two repository docs before ope
    Docs: "A public source repository that reviewers and users can inspect."
 2. **Unique name.** Guidelines checklist: "Unique name. Search the Marketplace first." On 2026-11-23 a Marketplace search for `jobo` (tool category) returned no plugin, and `langgenius/dify-plugins` had no `jobo/` directory. Re-check just before submitting.
 3. **Free only.** Guidelines: "The Dify Marketplace currently accepts free plugins only." The plugin is free; it needs the user's own Jobo API key, and job search is billed by Jobo, not by Dify. Say so in the PR.
-4. **Test in Dify.** The PR template asks: "I tested this plugin on Dify Community Edition and Dify Cloud, or documented any limitation below." The unit tests here mock HTTP and prove nothing about Dify itself. Run the plugin through remote debugging (`cp .env.example .env`, fill the key from **Plugins** in Dify, `python -m main`) on both, with a real Jobo key, and use only free calls plus one `page_size: 1` search. Do not tick the box until that is done.
+4. **Test in Dify.** The PR template asks: "I tested this plugin on Dify Community Edition and Dify Cloud, or documented any limitation below." The unit tests here mock HTTP and prove nothing about Dify itself. Run the plugin through remote debugging (`cp .env.example .env`, fill the key from **Plugins** in Dify, `python -m main`) on both, with a real Jobo key, and use only free calls plus one `page_size: 1` search and one `limit: 1` hiring signals call with a narrow filter (a signal costs ten times a job). Do not tick the box until that is done.
 
 ## 1. Tools
 
@@ -119,7 +119,7 @@ Docs: "The current template is part of the review contract. Do not delete fields
 
 ## What changed
 
-New tool plugin for the Jobo jobs API (https://jobo.world). Five tools: search jobs (billed by Jobo per job returned; page size defaults to 5 and is capped at 25), get job by id, find companies, find filter values and find locations (all free). It fills a gap: [explain; the Marketplace had no plugin named jobo on the day of the check, and no jobs-data search was looked for]. The user brings their own Jobo API key. The plugin is free.
+New tool plugin for the Jobo jobs API (https://jobo.world). Six tools: search jobs (billed by Jobo per job returned; page size defaults to 5 and is capped at 25), list hiring signals (billed by Jobo per signal returned, at ten times the price of a job; limit defaults to 5 and is capped at 25), get job by id, find companies, find filter values and find locations (all free). It fills a gap: [explain; the Marketplace had no plugin named jobo on the day of the check, and no jobs-data search was looked for]. The user brings their own Jobo API key. The plugin is free.
 
 ## Risk level
 
@@ -141,7 +141,7 @@ None of: command or code execution, SQL, SSH/SFTP, browser automation, file oper
 
 ## Reviewer notes
 
-- Jobo bills search per job returned; the plugin states this in every description and README, caps page_size at 25 and never retries a 402.
+- Jobo bills search per job returned and hiring signals per signal returned (again each time a signal is read); the plugin states this in every description and README, caps page_size and the signals limit at 25, never retries a 402, and never replays a signals request after a 500 or a lost response.
 - The validator's "prohibited financial activity" warning comes from README text that quotes Jobo's pay-as-you-go price. The plugin makes no payment, transfer or purchase.
 - `meta.minimum_dify_version` is not set (recommended, not required); tested on: (fill in).
 ```
@@ -165,7 +165,7 @@ Each quoted from the source named.
 | Missing, empty or off-vocabulary `tags` | "Every `manifest.yaml` must declare a non-empty `tags` list, and every tag must be one of the controlled values" (curation policy section 1). This plugin uses `search`, `business`. |
 | Default template icon, or Dify's logos | The pre-check fails the template icon; guidelines: "Do not use Dify's logos in your plugin assets." |
 | Wrong risk level, none or several ticked | "Selecting none or multiple levels produces `risk: missing` and a bot comment." (docs) |
-| Plugin that duplicates another, or is one of several wrappers of the same API | "No functional duplicates." and "Restricted: unnecessary splitting, multiple plugins for the same API/auth; bundle them instead" (guidelines). Ship all five tools in this one plugin. |
+| Plugin that duplicates another, or is one of several wrappers of the same API | "No functional duplicates." and "Restricted: unnecessary splitting, multiple plugins for the same API/auth; bundle them instead" (guidelines). Ship all six tools in this one plugin. |
 | Same-author name collision | "collisions within the same author fail the check" (curation policy section 3) |
 | Version already published, or an update that only bumps metadata | "must not already exist on the Dify Marketplace" (`docs/plugin-submission-requirements.md`); "New versions must add real capability, not just metadata bumps." (guidelines) |
 | More than one `.difypkg`, flattened layout, several plugins in one directory | "no `.difypkg` flattened into the author root directory (fails)" (curation policy section 5) |

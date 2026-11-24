@@ -6,7 +6,15 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS = ["search_jobs", "get_job", "find_companies", "find_filter_values", "find_locations"]
+TOOLS = [
+    "search_jobs",
+    "get_job",
+    "find_companies",
+    "find_filter_values",
+    "find_locations",
+    "list_hiring_signals",
+]
+FREE_TOOLS = ["get_job", "find_companies", "find_filter_values", "find_locations"]
 
 
 def load(path: str):
@@ -49,9 +57,15 @@ def test_billing_statements_match_the_billing_docs():
     search = load("tools/search_jobs.yaml")["description"]
     assert "billed per job returned" in search["human"]["en_US"].lower()
     assert "BILLED per job returned" in search["llm"]
-    for name in TOOLS[1:]:
+    for name in FREE_TOOLS:
         text = load(f"tools/{name}.yaml")["description"]["llm"]
         assert "Free: not billed" in text, name
+    signals = load("tools/list_hiring_signals.yaml")["description"]
+    assert "billed per signal returned" in signals["human"]["en_US"].lower()
+    assert "BILLED per signal returned" in signals["llm"]
+    for text in (signals["human"]["en_US"], signals["llm"]):
+        assert "ten times the price of a job" in text
+        assert "billed again" in text
     # A price may only be stated where docs/billing.mdx states it; tools state none.
     for name in TOOLS:
         assert "$" not in yaml.safe_dump(load(f"tools/{name}.yaml")), name
@@ -62,6 +76,16 @@ def test_page_size_default_and_cap_in_the_schema():
         p for p in load("tools/search_jobs.yaml")["parameters"] if p["name"] == "page_size"
     )
     assert page_size["default"] == 5 and page_size["max"] == 25
+
+
+def test_signal_limit_default_and_cap_in_the_schema():
+    from jobo_client.service import DEFAULT_SIGNAL_LIMIT, MAX_SIGNAL_LIMIT
+
+    limit = next(
+        p for p in load("tools/list_hiring_signals.yaml")["parameters"] if p["name"] == "limit"
+    )
+    assert limit["default"] == DEFAULT_SIGNAL_LIMIT == 5
+    assert limit["max"] == MAX_SIGNAL_LIMIT == 25
 
 
 def test_dependencies_are_pinned_and_dify_plugin_is_recent_enough():

@@ -1,5 +1,5 @@
 """
-The five Jobo operations behind the plugin's tools.
+The six Jobo operations behind the plugin's tools.
 
 Each method turns tool arguments into one Jobo API request and returns a
 `Result`: text a model can read and a small JSON object for workflow variables.
@@ -29,6 +29,16 @@ from jobo_client.format import (
     match_occupations,
     search_header,
     search_notes,
+)
+from jobo_client.signals import (
+    EMPTY_SIGNALS,
+    SIGNAL_COMPANY_SIZES,
+    SIGNAL_SENIORITY,
+    SIGNAL_TYPES,
+    format_signal,
+    signal_metadata,
+    signals_billing_line,
+    signals_header,
 )
 
 API_MAX_PAGE_SIZE = 100
@@ -80,6 +90,41 @@ FILTER_FACETS = (
     "job_categories",
     "job_subcategories",
     "occupations",
+)
+
+DEFAULT_SIGNAL_LIMIT = 5
+#: Hard cap on signals requested per call. Every signal returned is billed at
+#: ten times the price of a job, and a signal read again is billed again, so a
+#: larger limit from a model is reduced to this.
+MAX_SIGNAL_LIMIT = 25
+#: The most values one list filter of the signals API takes.
+SIGNAL_MAX_LIST_VALUES = 100
+#: list_hiring_signals list parameters: name, separator, allowed values (None
+#: for open values). The API reads only comma-separated lists, so a value can
+#: never contain a comma; the lists whose values are names take semicolons, as
+#: they do in search_jobs, so a comma inside a name is caught and refused.
+_SIGNAL_LISTS: Tuple[Tuple[str, str, Optional[Tuple[str, ...]]], ...] = (
+    ("types", ",", SIGNAL_TYPES),
+    ("domains", ",", None),
+    ("countries", ",", None),
+    ("company_sizes", ",", SIGNAL_COMPANY_SIZES),
+    ("industries", ";", None),
+    ("funding_stages", ";", None),
+    ("functions", ";", None),
+    ("roles", ",", None),
+    ("seniority", ",", SIGNAL_SENIORITY),
+    ("technologies", ",", None),
+    ("skills", ",", None),
+    ("job_countries", ",", None),
+)
+_SIGNAL_COUNTRY_LISTS = frozenset({"countries", "job_countries"})
+#: The filters `GET /api/companies/{id}/signals` takes besides limit and cursor.
+COMPANY_SIGNAL_FILTERS = (
+    "types",
+    "min_strength",
+    "detected_after",
+    "detected_before",
+    "created_after",
 )
 
 _SANDBOX_NOTE = (
@@ -168,6 +213,51 @@ def _whole_number(name: str, value: Any, default: int) -> int:
     return int(number)
 
 
+def _calendar_day(name: str, value: Any) -> Optional[str]:
+    """A day as yyyy-MM-dd, the only form the signals API takes for it."""
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise ToolInputError(
+            f"{name} must be a date in yyyy-MM-dd form such as 2026-11-01, got {value!r}."
+        ) from exc
+
+
+def _signal_list(
+    name: str, value: Any, separator: str, allowed: Optional[Tuple[str, ...]]
+) -> List[str]:
+    """One list filter of the signals API, checked before it is joined with commas."""
+    values = split_values(value, separator)
+    if allowed is not None:
+        values = split_values([v.lower() for v in values])
+        unknown = [v for v in values if v not in allowed]
+        if unknown:
+            raise ToolInputError(
+                f"Unknown {name} value(s) {unknown}. Allowed: {', '.join(allowed)}."
+            )
+    if name in _SIGNAL_COUNTRY_LISTS:
+        values = split_values([v.upper() for v in values])
+        bad = [v for v in values if len(v) != 2 or not (v.isascii() and v.isalpha())]
+        if bad:
+            raise ToolInputError(
+                f"{name} takes two-letter country codes such as US or DE, got {bad}."
+            )
+    with_comma = next((v for v in values if "," in v), None)
+    if with_comma is not None:
+        raise ToolInputError(
+            f'"{with_comma}" cannot be used in {name}: the signals API separates values '
+            "with commas, so a value that contains one would be read as two. Leave the "
+            "comma out of the value."
+        )
+    if len(values) > SIGNAL_MAX_LIST_VALUES:
+        raise ToolInputError(
+            f"{name} takes at most {SIGNAL_MAX_LIST_VALUES} values, got {len(values)}."
+        )
+    return values
+
+
 def _pair(include: List[str], exclude: List[str]) -> Dict[str, List[str]]:
     pair: Dict[str, List[str]] = {}
     if include:
@@ -197,7 +287,10 @@ def _is_job_not_found(error: JoboNotFoundError) -> bool:
 
 
 class JoboService:
-    """The five Jobo operations. Search is billed per job; the rest are free."""
+    """
+    The six Jobo operations. Search is billed per job, hiring signals per
+    signal; the rest are free.
+    """
 
     def __init__(self, client: JoboClient, max_page_size: int = MAX_PAGE_SIZE) -> None:
         if not 1 <= max_page_size <= API_MAX_PAGE_SIZE:
@@ -336,6 +429,113 @@ class JoboService:
         data = {
             "summary": {k: v for k, v in summary.items() if v is not None},
             "jobs": [job_metadata(job) for job in jobs],
+        }
+        return Result("\n".join(lines), data)
+
+    # -------------------------------------------------- list_hiring_signals
+
+    def signals_request(
+        self, args: Mapping[str, Any]
+    ) -> Tuple[str, Dict[str, Any], Optional[int]]:
+        """
+        The path and query of a signals read, and the cap applied to limit if any.
+
+        With `company_id` the request goes to `GET /api/companies/{id}/signals`,
+        which takes only `COMPANY_SIGNAL_FILTERS`: any other filter is refused
+        by name rather than dropped, so a model never reads a wider set of
+        signals than it asked for.
+        """
+        a = args
+        params: Dict[str, Any] = {}
+        for name, separator, allowed in _SIGNAL_LISTS:
+            values = _signal_list(name, a.get(name), separator, allowed)
+            if values:
+                params[name] = ",".join(values)
+        strength = _whole_number("min_strength", a.get("min_strength"), 0)
+        if strength:
+            if not 1 <= strength <= 100:
+                raise ToolInputError(
+                    f"min_strength must be between 1 and 100, got {strength}."
+                )
+            params["min_strength"] = strength
+        for key in ("detected_after", "detected_before"):
+            day = _calendar_day(key, a.get(key))
+            if day:
+                params[key] = day
+        created_after = _timestamp("created_after", a.get("created_after"))
+        if created_after:
+            params["created_after"] = created_after
+        if _boolean("exclude_agencies", a.get("exclude_agencies")):
+            params["exclude_agencies"] = "true"
+
+        company = str(a.get("company_id") or "").strip()
+        if company:
+            try:
+                company_id = str(UUID(company))
+            except ValueError:
+                raise ToolInputError(
+                    f'"{company}" is not a Jobo company id. Company ids are UUIDs: the '
+                    "`Company ID` values this tool returns, or a job's company id."
+                ) from None
+            refused = [key for key in params if key not in COMPANY_SIGNAL_FILTERS]
+            if refused:
+                raise ToolInputError(
+                    "With company_id this tool reads one company's signals, which takes "
+                    f"only {', '.join(COMPANY_SIGNAL_FILTERS)}, limit and cursor. Remove "
+                    f"{', '.join(refused)}, or leave company_id empty to use them across "
+                    "companies (domains picks companies by website domain)."
+                )
+            path = f"/api/companies/{quote(company_id, safe='')}/signals"
+        else:
+            path = "/api/signals"
+
+        requested = max(
+            _whole_number("limit", a.get("limit"), DEFAULT_SIGNAL_LIMIT), 1
+        )
+        limit = min(requested, MAX_SIGNAL_LIMIT)
+        params["limit"] = limit
+        cursor = str(a.get("cursor") or "").strip()
+        if cursor:
+            params["cursor"] = cursor
+        return path, params, (limit if limit < requested else None)
+
+    def list_hiring_signals(self, args: Mapping[str, Any]) -> Result:
+        """
+        Hiring signals, newest detection day first. BILLED per signal returned,
+        at ten times the price of a job, and again each time a signal is read.
+
+        One call is one request: the next page is read only when the caller
+        passes the cursor back.
+        """
+        path, params, capped = self.signals_request(args)
+        reply = self.client.request("GET", path, params=params)
+        payload = reply.data if isinstance(reply.data, dict) else {}
+        signals = _items(reply, "signals")
+        has_more = payload.get("has_more") is True
+        cursor = payload.get("next_cursor")
+        next_cursor = cursor if isinstance(cursor, str) and cursor else None
+        lines = [
+            signals_header(len(signals), has_more, next_cursor)
+            if signals or next_cursor
+            else EMPTY_SIGNALS
+        ]
+        if capped is not None:
+            lines.append(
+                f"Note: limit was capped at {capped}, this tool's maximum, because "
+                "every returned signal is billed."
+            )
+        lines.extend(format_signal(signal, i) for i, signal in enumerate(signals, start=1))
+        lines.append(signals_billing_line(len(signals)))
+        summary = {
+            "count": len(signals),
+            "has_more": has_more,
+            "next_cursor": next_cursor,
+            "billed_signals": len(signals),
+            **reply.usage,
+        }
+        data = {
+            "summary": {k: v for k, v in summary.items() if v is not None},
+            "signals": [signal_metadata(signal) for signal in signals],
         }
         return Result("\n".join(lines), data)
 

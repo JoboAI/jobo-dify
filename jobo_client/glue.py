@@ -6,15 +6,18 @@ raising, so this module builds the service from the stored credential and turns
 API failures into messages a person or a model can act on.
 """
 
-from typing import Any, Mapping, NoReturn
+from typing import Any, Callable, Mapping, NoReturn
 
 from jobo_client.client import JoboClient
 from jobo_client.errors import (
     JoboAuthenticationError,
+    JoboConnectionError,
     JoboError,
     JoboInsufficientCreditsError,
+    JoboNotFoundError,
     JoboPermissionError,
     JoboRateLimitError,
+    JoboServerError,
 )
 from jobo_client.service import JoboService, ToolInputError
 
@@ -54,8 +57,55 @@ def describe_error(error: Exception) -> str:
     return str(error)
 
 
-def raise_tool_error(error: Exception) -> NoReturn:
+def describe_signals_error(error: Exception) -> str:
+    """
+    A message for a failed hiring signals call. It never contains the API key.
+
+    Signals are billed per signal returned, at ten times the price of a job,
+    and the client never replays a signals request whose answer was lost, so
+    the messages say what was and was not retried.
+    """
+    if isinstance(error, JoboInsufficientCreditsError):
+        return (
+            f"{error} The Jobo account cannot cover these signals (HTTP 402). Hiring "
+            "signals are billed per signal returned, at ten times the price of a job: "
+            "the plan's included signals are used first, then the wallet. Top up the "
+            "wallet or ask for fewer signals with a smaller limit. This is not retried."
+        )
+    if isinstance(error, JoboPermissionError) and error.code == "account_key_required":
+        return (
+            f"{error} Hiring signals are charged to an account, so they need an "
+            "account API key (HTTP 403). Create one at "
+            "https://enterprise.jobo.world/api-keys and paste it into this plugin's "
+            "authorization settings."
+        )
+    if isinstance(error, JoboNotFoundError) and error.not_available_in_sandbox:
+        return (
+            "Hiring signals are not available with a sandbox API key (jbe_test_...), "
+            "which serves job search and job details only. Use a live account API key. "
+            "Do not call this tool again with this key."
+        )
+    if isinstance(error, JoboRateLimitError):
+        return (
+            f"{error} The Jobo API rate limit for hiring signals was reached (HTTP 429). "
+            "Without a subscription it allows 20 requests a minute, 200 an hour and "
+            "1,000 a day. Wait before calling again."
+        )
+    told_to_retry = isinstance(error, JoboServerError) and (
+        error.status_code == 503 and error.retry_after is not None
+    )
+    if isinstance(error, (JoboServerError, JoboConnectionError)) and not told_to_retry:
+        return (
+            f"{error} It was not retried: the signals may already have been billed, "
+            "and reading them again bills them again."
+        )
+    return describe_error(error)
+
+
+def raise_tool_error(
+    error: Exception, describe: Callable[[Exception], str] = describe_error
+) -> NoReturn:
     """Re-raise `error` as a JoboToolError whose message is safe to show."""
     if isinstance(error, (JoboError, ToolInputError)):
-        raise JoboToolError(describe_error(error)) from error
+        raise JoboToolError(describe(error)) from error
     raise error
