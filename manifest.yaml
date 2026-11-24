@@ -28,6 +28,3 @@ meta:
     language: python
     version: "3.12"
     entrypoint: main
-network:
-  domains:
-    - connect.jobo.world

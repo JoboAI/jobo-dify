@@ -133,7 +133,7 @@ New tool plugin for the Jobo jobs API (https://jobo.world). Five tools: search j
 
 ## Security and privacy notes
 
-None of: command or code execution, SQL, SSH/SFTP, browser automation, file operations, arbitrary URL fetching, proxying, sensitive-data handling. The plugin calls one fixed HTTPS host, connect.jobo.world (declared in manifest `network.domains`), and sends the user's API key in the `X-Api-Key` header and the tool parameters as query or body. Requests have timeouts; error messages never contain the key. Privacy: PRIVACY.md, https://jobo.world/privacy.
+None of: command or code execution, SQL, SSH/SFTP, browser automation, file operations, arbitrary URL fetching, proxying, sensitive-data handling. The plugin calls one fixed HTTPS host, connect.jobo.world (hard-coded in jobo_client/client.py; the Dify manifest has no egress field), and sends the user's API key in the `X-Api-Key` header and the tool parameters as query or body. Requests have timeouts; error messages never contain the key. Privacy: PRIVACY.md, https://jobo.world/privacy.
 
 ## Local validation
 

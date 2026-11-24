@@ -6,6 +6,7 @@ Each method turns tool arguments into one Jobo API request and returns a
 Nothing here imports the Dify SDK, so it is tested without it.
 """
 
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -36,6 +37,14 @@ DEFAULT_PAGE_SIZE = 5
 #: larger page_size from a model is reduced to this.
 MAX_PAGE_SIZE = 25
 _TAXONOMY_TTL_SECONDS = 600.0
+#: The occupation taxonomy, per base URL and API key, for every service in
+#: this process. Each tool call builds a new service, so a cache on the
+#: service would never be hit. Keyed per key so a key the API would reject is
+#: not served another key's copy. The plugin runtime may run tool calls on
+#: several threads, hence the lock.
+_TAXONOMY_CACHE: Dict[str, Tuple[float, List[Dict[str, str]]]] = {}
+_TAXONOMY_LOCK = threading.Lock()
+_TAXONOMY_MAX_ENTRIES = 64
 
 WORK_MODELS = ("remote", "hybrid", "onsite")
 EMPLOYMENT_TYPES = (
@@ -135,6 +144,20 @@ def _timestamp(name: str, value: Any) -> Optional[str]:
     return parsed.isoformat().replace("+00:00", "Z")
 
 
+def _boolean(name: str, value: Any) -> Optional[bool]:
+    """A yes/no argument, or None when it was not given."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes"):
+        return True
+    if text in ("false", "0", "no"):
+        return False
+    raise ToolInputError(f"{name} must be true or false, got {value!r}.")
+
+
 def _whole_number(name: str, value: Any, default: int) -> int:
     if value is None or (isinstance(value, str) and not value.strip()):
         return default
@@ -183,7 +206,6 @@ class JoboService:
             )
         self.client = client
         self.max_page_size = max_page_size
-        self._taxonomy: Optional[Tuple[float, List[Dict[str, str]]]] = None
 
     # ------------------------------------------------------------ search_jobs
 
@@ -224,19 +246,41 @@ class JoboService:
                 split_values(a.get("companies"), ";"),
                 split_values(a.get("exclude_companies"), ";"),
             ),
-            "industries": _pair(split_values(a.get("industries"), ";"), []),
+            "industries": _pair(
+                split_values(a.get("industries"), ";"),
+                split_values(a.get("exclude_industries"), ";"),
+            ),
             "company_categories": _pair(
                 _enum_list(
                     "company_categories",
                     a.get("company_categories"),
                     COMPANY_CATEGORIES,
                 ),
-                [],
+                _enum_list(
+                    "exclude_company_categories",
+                    a.get("exclude_company_categories"),
+                    COMPANY_CATEGORIES,
+                ),
             ),
-            "job_categories": _pair(split_values(a.get("job_categories"), ";"), []),
-            "occupation_ids": _pair(split_values(a.get("occupation_ids")), []),
+            "job_categories": _pair(
+                split_values(a.get("job_categories"), ";"),
+                split_values(a.get("exclude_job_categories"), ";"),
+            ),
+            "job_subcategories": _pair(
+                split_values(a.get("job_subcategories"), ";"),
+                split_values(a.get("exclude_job_subcategories"), ";"),
+            ),
+            "occupation_ids": _pair(
+                split_values(a.get("occupation_ids")),
+                split_values(a.get("exclude_occupation_ids")),
+            ),
         }
         body.update({k: v for k, v in pairs.items() if v})
+        search_description = _boolean(
+            "search_description", a.get("search_description")
+        )
+        if search_description is not None:
+            body["search_description"] = search_description
         salary: Dict[str, int] = {}
         minimum = _whole_number("min_salary_usd", a.get("min_salary_usd"), 0)
         maximum = _whole_number("max_salary_usd", a.get("max_salary_usd"), 0)
@@ -246,7 +290,12 @@ class JoboService:
             salary["max"] = maximum
         if salary:
             body["salary_usd"] = salary
-        for key in ("posted_after", "posted_before"):
+        for key in (
+            "posted_after",
+            "posted_before",
+            "discovered_after",
+            "discovered_before",
+        ):
             stamp = _timestamp(key, a.get(key))
             if stamp:
                 body[key] = stamp
@@ -355,12 +404,19 @@ class JoboService:
         )
 
     def _occupation_rows(self) -> List[Dict[str, str]]:
-        if self._taxonomy is not None:
-            loaded_at, rows = self._taxonomy
-            if time.monotonic() - loaded_at <= _TAXONOMY_TTL_SECONDS:
-                return rows
+        key = self.client.cache_key()
+        with _TAXONOMY_LOCK:
+            cached = _TAXONOMY_CACHE.get(key)
+        if cached is not None and time.monotonic() - cached[0] <= _TAXONOMY_TTL_SECONDS:
+            return cached[1]
+        # Fetched outside the lock: two calls that miss at once both fetch,
+        # which is cheaper than making every other call wait on the network.
         rows = flatten_taxonomy(self.client.request("GET", "/api/occupations").data)
-        self._taxonomy = (time.monotonic(), rows)
+        with _TAXONOMY_LOCK:
+            _TAXONOMY_CACHE[key] = (time.monotonic(), rows)
+            while len(_TAXONOMY_CACHE) > _TAXONOMY_MAX_ENTRIES:
+                oldest = min(_TAXONOMY_CACHE, key=lambda k: _TAXONOMY_CACHE[k][0])
+                del _TAXONOMY_CACHE[oldest]
         return rows
 
     def find_filter_values(self, facet: Any, query: Any = None, limit: Any = 20) -> Result:

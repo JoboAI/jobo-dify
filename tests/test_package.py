@@ -13,13 +13,18 @@ def load(path: str):
     return yaml.safe_load((ROOT / path).read_text(encoding="utf-8"))
 
 
-def test_manifest_lists_the_provider_and_declares_the_network():
+def test_manifest_lists_the_provider():
     manifest = load("manifest.yaml")
     assert manifest["author"] == "jobo" and manifest["name"] == "jobo"
     assert manifest["plugins"]["tools"] == ["provider/jobo.yaml"]
     assert manifest["privacy"] == "./PRIVACY.md" and (ROOT / "PRIVACY.md").is_file()
-    assert manifest["network"]["domains"] == ["connect.jobo.world"]
     assert (ROOT / manifest["icon"].replace("icon.svg", "_assets/icon.svg")).is_file()
+
+
+def test_manifest_has_no_field_the_dify_schema_lacks():
+    # Dify's manifest has no egress allowlist: a `network` block would be
+    # ignored, and claiming it limits the plugin's traffic would be false.
+    assert "network" not in load("manifest.yaml")
 
 
 def test_provider_lists_every_tool_and_one_secret():

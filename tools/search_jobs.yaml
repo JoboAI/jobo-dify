@@ -26,6 +26,17 @@ parameters:
   llm_description: Free-text query, for example a job title or skill. Wrap it in double quotes for an
     exact title phrase match.
   form: llm
+- name: search_description
+  type: boolean
+  required: false
+  label:
+    en_US: Broad query match
+  human_description:
+    en_US: On (the API default), the query also matches company, skills and summary. Off, it matches job
+      titles only.
+  llm_description: true (default) also matches the query against company, skills and summary; false matches
+    job titles only.
+  form: llm
 - name: location
   type: string
   required: false
@@ -114,6 +125,15 @@ parameters:
   llm_description: Industry names, exactly as find_filter_values lists them (facet industries), separated
     by semicolons.
   form: llm
+- name: exclude_industries
+  type: string
+  required: false
+  label:
+    en_US: Exclude industries
+  human_description:
+    en_US: Leave out jobs at companies in any of these industries, separated by semicolons.
+  llm_description: Leave out jobs at companies in any of these industries, separated by semicolons.
+  form: llm
 - name: job_categories
   type: string
   required: false
@@ -124,6 +144,34 @@ parameters:
   llm_description: Occupation category names such as "Healthcare" (facet job_categories in find_filter_values),
     separated by semicolons.
   form: llm
+- name: exclude_job_categories
+  type: string
+  required: false
+  label:
+    en_US: Exclude job categories
+  human_description:
+    en_US: Leave out jobs in any of these occupation categories, separated by semicolons.
+  llm_description: Leave out jobs in any of these occupation categories, separated by semicolons.
+  form: llm
+- name: job_subcategories
+  type: string
+  required: false
+  label:
+    en_US: Job subcategories
+  human_description:
+    en_US: Occupation subcategory names such as Nursing. Separate several with semicolons.
+  llm_description: Occupation subcategory names such as "Nursing" (facet job_subcategories in find_filter_values),
+    separated by semicolons.
+  form: llm
+- name: exclude_job_subcategories
+  type: string
+  required: false
+  label:
+    en_US: Exclude job subcategories
+  human_description:
+    en_US: Leave out jobs in any of these occupation subcategories, separated by semicolons.
+  llm_description: Leave out jobs in any of these occupation subcategories, separated by semicolons.
+  form: llm
 - name: occupation_ids
   type: string
   required: false
@@ -133,6 +181,15 @@ parameters:
     en_US: Occupation ids, not names, comma-separated. Look them up with Find filter values (facet occupations).
   llm_description: Occupation ids, not names, comma-separated. Get them from find_filter_values with facet
     occupations and the occupation's name as the query.
+  form: llm
+- name: exclude_occupation_ids
+  type: string
+  required: false
+  label:
+    en_US: Exclude occupation ids
+  human_description:
+    en_US: Leave out jobs with any of these occupation ids, comma-separated.
+  llm_description: Leave out jobs with any of these occupation ids, comma-separated.
   form: llm
 - name: sources
   type: string
@@ -163,6 +220,17 @@ parameters:
       service-provider, hardware, agency, nonprofit, government or education. Comma-separated.'
   llm_description: 'Hiring company''s business model: b2b, b2c, b2b2c, b2g, saas, marketplace, e-commerce,
     service-provider, hardware, agency, nonprofit, government, education. Comma-separated.'
+  form: llm
+- name: exclude_company_categories
+  type: string
+  required: false
+  label:
+    en_US: Exclude company categories
+  human_description:
+    en_US: Leave out jobs at companies with any of these business models (same values as Company categories),
+      comma-separated.
+  llm_description: Leave out companies with any of these business models (values as company_categories),
+    comma-separated.
   form: llm
 - name: min_salary_usd
   type: number
@@ -201,6 +269,24 @@ parameters:
   human_description:
     en_US: Only jobs posted on or before this ISO 8601 date, such as 2026-01-31.
   llm_description: Only jobs posted on or before this ISO 8601 date or timestamp.
+  form: llm
+- name: discovered_after
+  type: string
+  required: false
+  label:
+    en_US: Discovered after
+  human_description:
+    en_US: Only jobs Jobo first indexed on or after this ISO 8601 date (UTC), such as 2026-01-31.
+  llm_description: Only jobs Jobo first indexed on or after this ISO 8601 date or timestamp (UTC).
+  form: llm
+- name: discovered_before
+  type: string
+  required: false
+  label:
+    en_US: Discovered before
+  human_description:
+    en_US: Only jobs Jobo first indexed on or before this ISO 8601 date (UTC).
+  llm_description: Only jobs Jobo first indexed on or before this ISO 8601 date or timestamp (UTC).
   form: llm
 - name: sort
   type: select

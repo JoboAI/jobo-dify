@@ -89,6 +89,52 @@ def test_search_request_shape_and_auth_header(api):
     assert KEY not in json.dumps(data) + text
 
 
+def test_search_sends_the_exclude_lists_subcategories_and_discovery_window(api):
+    mock = api(reply(200, SEARCH_RESPONSE))
+    run(
+        SearchJobsTool,
+        {
+            "industries": "Software; Banking",
+            "exclude_industries": "Gambling",
+            "company_categories": "saas",
+            "exclude_company_categories": "Agency, nonprofit",
+            "job_categories": "Healthcare",
+            "exclude_job_categories": "Sales; Retail",
+            "job_subcategories": "Nursing",
+            "exclude_job_subcategories": "Home Care",
+            "occupation_ids": "occ-1",
+            "exclude_occupation_ids": "occ-2, occ-3",
+            "discovered_after": "2026-11-01",
+            "discovered_before": "2026-11-20T12:00:00Z",
+            "search_description": False,
+        },
+    )
+    body = mock.body
+    assert body["industries"] == {"include": ["Software", "Banking"], "exclude": ["Gambling"]}
+    assert body["company_categories"] == {
+        "include": ["saas"],
+        "exclude": ["agency", "nonprofit"],
+    }
+    assert body["job_categories"] == {"include": ["Healthcare"], "exclude": ["Sales", "Retail"]}
+    assert body["job_subcategories"] == {"include": ["Nursing"], "exclude": ["Home Care"]}
+    assert body["occupation_ids"] == {"include": ["occ-1"], "exclude": ["occ-2", "occ-3"]}
+    assert body["discovered_after"] == "2026-11-01T00:00:00Z"
+    assert body["discovered_before"] == "2026-11-20T12:00:00Z"
+    assert body["search_description"] is False
+
+
+def test_search_sends_an_exclude_list_on_its_own(api):
+    mock = api(reply(200, SEARCH_RESPONSE))
+    run(SearchJobsTool, {"exclude_job_subcategories": "Nursing"})
+    assert mock.body["job_subcategories"] == {"exclude": ["Nursing"]}
+
+
+def test_search_leaves_search_description_to_the_api_when_not_given(api):
+    mock = api(reply(200, SEARCH_RESPONSE))
+    run(SearchJobsTool, {"query": "nurse"})
+    assert "search_description" not in mock.body
+
+
 def test_search_defaults_to_a_small_page(api):
     mock = api(reply(200, SEARCH_RESPONSE))
     run(SearchJobsTool, {"query": "nurse"})
@@ -124,6 +170,9 @@ def test_search_empty_result_is_a_message_not_an_error(api):
         ({"employment_type": "gig"}, "Unknown employment_type"),
         ({"sort": "newest"}, "Unknown sort"),
         ({"posted_after": "last week"}, "posted_after must be an ISO 8601"),
+        ({"discovered_before": "yesterday"}, "discovered_before must be an ISO 8601"),
+        ({"exclude_company_categories": "startup"}, "Unknown exclude_company_categories"),
+        ({"search_description": "maybe"}, "search_description must be true or false"),
         ({"page_size": "many"}, "page_size must be a whole number"),
     ],
 )
@@ -306,31 +355,57 @@ def test_find_filter_values_rejects_an_unknown_facet(api):
     assert mock.requests == []
 
 
-def test_find_occupations_searches_the_taxonomy_once_and_caches_it(api):
-    taxonomy = {
-        "categories": [
-            {
-                "name": "Healthcare",
-                "subcategories": [
-                    {
-                        "name": "Nursing",
-                        "occupations": [
-                            {"id": "occ-1", "name": "Registered Nurse"},
-                            {"id": "occ-2", "name": "Nurse Practitioner"},
-                        ],
-                    }
-                ],
-            }
-        ]
-    }
-    mock = api(reply(200, taxonomy))
-    from jobo_client.glue import service_from_credentials
+TAXONOMY = {
+    "categories": [
+        {
+            "name": "Healthcare",
+            "subcategories": [
+                {
+                    "name": "Nursing",
+                    "occupations": [
+                        {"id": "occ-1", "name": "Registered Nurse"},
+                        {"id": "occ-2", "name": "Nurse Practitioner"},
+                    ],
+                }
+            ],
+        }
+    ]
+}
 
-    service = service_from_credentials(CREDS)
-    first = service.find_filter_values("occupations", "nurse")
-    service.find_filter_values("occupations", "practitioner")
+
+def test_find_occupations_fetches_the_taxonomy_once_across_tool_calls(api):
+    # Dify builds a new tool, client and service for every call, as `run` does.
+    mock = api(reply(200, TAXONOMY))
+    first = run(FindFilterValuesTool, {"facet": "occupations", "query": "nurse"})
+    run(FindFilterValuesTool, {"facet": "occupations", "query": "practitioner"})
     assert [r.url.path for r in mock.requests] == ["/api/occupations"]
-    assert "occ-1" in first.text
+    assert "occ-1" in texts(first)
+
+
+def test_find_occupations_cache_is_per_api_key(api):
+    mock = api(reply(200, TAXONOMY))
+    run(FindFilterValuesTool, {"facet": "occupations", "query": "nurse"})
+    run(
+        FindFilterValuesTool,
+        {"facet": "occupations", "query": "nurse"},
+        {"jobo_api_key": "jbe_live_another_key_0000"},
+    )
+    assert len(mock.requests) == 2
+    assert mock.last.headers["X-Api-Key"] == "jbe_live_another_key_0000"
+
+
+def test_find_occupations_refetches_the_taxonomy_after_the_ttl(api):
+    from jobo_client import service as service_module
+
+    mock = api(reply(200, TAXONOMY))
+    run(FindFilterValuesTool, {"facet": "occupations", "query": "nurse"})
+    for key, (loaded_at, rows) in list(service_module._TAXONOMY_CACHE.items()):
+        service_module._TAXONOMY_CACHE[key] = (
+            loaded_at - service_module._TAXONOMY_TTL_SECONDS - 1,
+            rows,
+        )
+    run(FindFilterValuesTool, {"facet": "occupations", "query": "nurse"})
+    assert len(mock.requests) == 2
 
 
 def test_find_filter_values_401(api):
@@ -361,8 +436,39 @@ def test_find_locations_sandbox_key_gets_guidance(api):
     assert "Do not call this tool again" in texts(messages)
 
 
-def test_find_locations_5xx_is_retried_then_reported(api):
-    mock = api(reply(503, {"title": "Unavailable"}))
+def test_find_locations_503_with_retry_after_is_retried_then_reported(api):
+    mock = api(reply(503, {"title": "Unavailable"}, {"Retry-After": "5"}))
     with pytest.raises(JoboToolError, match="503"):
         run(FindLocationsTool, {"query": "Berlin"})
     assert len(mock.requests) == 3  # one try and two retries
+
+
+def test_find_locations_500_is_retried_then_reported(api):
+    mock = api(reply(500, {"title": "boom"}))
+    with pytest.raises(JoboToolError, match="500"):
+        run(FindLocationsTool, {"query": "Berlin"})
+    assert len(mock.requests) == 3
+
+
+def test_search_503_without_retry_after_is_not_retried(api):
+    # The API's "Search took too long": the same request times out again.
+    mock = api(reply(503, {"title": "Search took too long"}))
+    with pytest.raises(JoboToolError, match="Search took too long"):
+        run(SearchJobsTool, {"query": "nurse"})
+    assert len(mock.requests) == 1
+
+
+def test_search_503_with_retry_after_is_retried_then_succeeds(api):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(
+                503, json={"title": "Search temporarily unavailable"}, headers={"Retry-After": "5"}
+            )
+        return httpx.Response(200, json=SEARCH_RESPONSE)
+
+    mock = api(handler)
+    run(SearchJobsTool, {"query": "nurse"})
+    assert len(mock.requests) == 2

@@ -79,3 +79,9 @@ def api(monkeypatch):
 def no_sleep(monkeypatch):
     """Retries must not slow the tests down."""
     monkeypatch.setattr("jobo_client.client.time.sleep", lambda _seconds: None)
+
+
+@pytest.fixture(autouse=True)
+def empty_taxonomy_cache(monkeypatch):
+    """The occupation cache lives for the process: start each test without it."""
+    monkeypatch.setattr("jobo_client.service._TAXONOMY_CACHE", {})

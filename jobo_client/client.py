@@ -5,13 +5,15 @@ It owns the key, the headers and the retry and error rules:
 
 - headers: `X-Api-Key`, a `User-Agent` and `X-Jobo-Client: dify`. The key is
   only ever written into that header; it is never logged or put in a message;
-- retries: only 429, 500 and 503 and failures to connect are retried,
-  `Retry-After` is honoured up to `MAX_RETRY_WAIT`, and 402 is never retried.
-  A read timeout is not retried either, because a billed page may already
-  have been delivered;
+- retries: only 429, 500, a 503 that carries `Retry-After` and failures to
+  connect are retried, `Retry-After` is honoured up to `MAX_RETRY_WAIT`, and
+  402 is never retried. A 503 without `Retry-After` ("Search took too long")
+  fails the same way again, so it is raised at once. A read timeout is not
+  retried either, because a billed page may already have been delivered;
 - errors: every non-2xx response is raised as a typed `JoboAPIError`.
 """
 
+import hashlib
 import random
 import time
 from dataclasses import dataclass, field
@@ -45,6 +47,10 @@ CLIENT_NAME = "dify"
 USER_AGENT = f"jobo-dify-plugin/{__version__}"
 
 _RETRYABLE_STATUSES = frozenset({429, 500, 503})
+#: Retried only when the response says when to come back. The API's "Search
+#: took too long" 503 sends no Retry-After: the same request times out again
+#: and holds a search thread each time.
+_RETRY_ONLY_WHEN_TOLD = frozenset({503})
 
 _ERROR_BY_STATUS: Dict[int, type] = {
     400: JoboValidationError,
@@ -131,6 +137,11 @@ class JoboClient:
 
     def __repr__(self) -> str:
         return f"JoboClient(base_url={self.base_url!r})"
+
+    def cache_key(self) -> str:
+        """A key for per-account caches: a hash of the base URL and API key, never the key."""
+        material = f"{self.base_url}\n{self._api_key}".encode("utf-8")
+        return hashlib.sha256(material).hexdigest()
 
     def is_sandbox_key(self) -> bool:
         """Whether the key is a sandbox key (`jbe_test_...`)."""
@@ -225,9 +236,17 @@ def _handle(response: httpx.Response) -> Reply:
                 "that is not valid JSON."
             )
             raise _Attempt(error, False) from exc
-    raise _Attempt(
-        _error_from_response(response), response.status_code in _RETRYABLE_STATUSES
-    )
+    error = _error_from_response(response)
+    raise _Attempt(error, _is_retryable(error))
+
+
+def _is_retryable(error: JoboAPIError) -> bool:
+    """Whether another attempt at the same request may succeed."""
+    if error.status_code not in _RETRYABLE_STATUSES:
+        return False
+    if error.status_code in _RETRY_ONLY_WHEN_TOLD:
+        return error.retry_after is not None
+    return True
 
 
 def _to_seconds(value: Any) -> Optional[float]:

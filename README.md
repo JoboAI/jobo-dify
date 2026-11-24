@@ -24,7 +24,7 @@ Find locations uses the free connector typeahead. It does not call the metered `
 
 1. Create a Jobo API key at <https://enterprise.jobo.world/api-keys>. New accounts get a free starting balance when they verify their email address, and a sandbox key (`jbe_test_...`) is free (see Limits).
 2. In Dify, open **Plugins**, install **Jobo** from the Marketplace, then open the plugin and choose **To Authorize**.
-3. Paste the API key into **Jobo API key** and save. The plugin checks the key against `GET /api/connectors/filters`, which is free and answers 401 without a valid key.
+3. Paste the API key into **Jobo API key** and save. The plugin checks the key against `GET /api/connectors/filters`, which is free and answers 401 without a valid key. Only a 401 or 403 rejects the key. If Jobo is unavailable, rate limited or unreachable at that moment, the key is saved without the check, and a tool call reports any problem later.
 4. Add the tools to an Agent app, or drop a tool node into a Workflow or Chatflow.
 
 ## Usage
@@ -35,10 +35,13 @@ In a Workflow, Search jobs outputs `text` (readable results) and `json` with `su
 
 Search jobs takes lists as one string, because Dify tool parameters are plain values:
 
-- Comma-separated: `work_model`, `employment_type`, `experience_level`, `skills`, `exclude_skills`, `occupation_ids`, `sources`, `language`, `company_categories`.
-- Semicolon-separated (names can contain commas): `location`, `companies`, `exclude_companies`, `industries`, `job_categories`.
+- Comma-separated: `work_model`, `employment_type`, `experience_level`, `skills`, `exclude_skills`, `occupation_ids`, `exclude_occupation_ids`, `sources`, `language`, `company_categories`, `exclude_company_categories`.
+- Semicolon-separated (names can contain commas): `location`, `companies`, `exclude_companies`, `industries`, `exclude_industries`, `job_categories`, `exclude_job_categories`, `job_subcategories`, `exclude_job_subcategories`.
 - `work_model` is `remote`, `hybrid` or `onsite`. `employment_type` is `full-time`, `part-time`, `contract`, `internship`, `freelance` or `temporary`. `experience_level` is `intern`, `entry`, `mid`, `senior`, `lead` or `executive`. An unknown value is rejected before any request, because the API would answer it with zero results rather than an error.
-- Open-value filters (`sources`, `skills`, `industries`, `job_categories`, `occupation_ids`, `companies`) match only values the index holds. Look them up with the free tools first.
+- Open-value filters (`sources`, `skills`, `industries`, `job_categories`, `job_subcategories`, `occupation_ids`, `companies`) match only values the index holds. Look them up with the free tools first.
+- `discovered_after` and `discovered_before` bound when Jobo first indexed a job; `posted_after` and `posted_before` bound when the employer posted it. `search_description` set to false matches the query against job titles only.
+
+Search jobs has every search filter of the shared connector contract except `description_format`: its results never include a job description, so the format would change nothing.
 
 ## Billing
 
@@ -58,11 +61,11 @@ What the plugin does about it: Search jobs asks for 5 jobs by default and never 
 | 401 | The API key was rejected. Check it in the plugin's authorization settings. |
 | 402 | Included jobs plus the wallet cannot cover the request. Top up the wallet (a top-up link is included when the API sends one) or use a smaller `page_size`. |
 | 429 | A rate limit was reached, with the wait the API asked for. Short waits (up to 20 seconds) are retried automatically, up to twice. |
-| 5xx, no connection | The error is reported. 500 and 503 and failures to connect are retried up to twice. |
+| 5xx, no connection | The error is reported. A 500, a 503 that says when to retry (`Retry-After`) and a failure to connect are retried up to twice. A 503 without `Retry-After` ("Search took too long") is not retried, because the same request runs out of time again: narrow the search instead. |
 
 ## Limits and connection requirements
 
-- The plugin contacts one host, `connect.jobo.world`, over HTTPS (declared in `manifest.yaml` under `network.domains`). Self-hosted Dify instances need outbound HTTPS access to it, including through any proxy they use.
+- The plugin contacts one host, `connect.jobo.world`, over HTTPS. The host is fixed in the code (`jobo_client/client.py`); Dify's plugin manifest has no field that declares or restricts outbound hosts. Self-hosted Dify instances need outbound HTTPS access to it, including through any proxy they use.
 - A sandbox key (`jbe_test_...`) returns fictional jobs in the real response shape and serves job search and job lookups only. With a sandbox key the three lookup tools return a message saying the lookup is unavailable, and the key is still accepted when you authorize. See <https://jobo.world/docs/sandbox>.
 - Every call counts toward the account's rate limits: <https://jobo.world/docs/rate-limits>.
 
@@ -74,7 +77,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-The tests use mocked HTTP and never touch the network. To run the plugin against a Dify instance, copy `.env.example` to `.env`, fill in the debugging key from **Plugins** in Dify, and run `python -m main`.
+The tests use mocked HTTP and never touch the network. `tests/test_contract_drift.py` checks the Search jobs parameters and enums against the shared filter contract (`../contracts/filters.json`) and is skipped where that file is absent, as in the standalone mirror. To run the plugin against a Dify instance, copy `.env.example` to `.env`, fill in the debugging key from **Plugins** in Dify, and run `python -m main`.
 
 ## License
 

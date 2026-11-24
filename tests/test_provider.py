@@ -37,19 +37,28 @@ def test_missing_key_is_rejected_without_a_request(api, creds):
     assert mock.requests == []
 
 
-def test_a_rate_limit_is_not_reported_as_a_bad_key(api):
-    api(reply(429, {"retry_after_seconds": 500}))
+def test_403_is_rejected(api):
+    api(reply(403, {"title": "Forbidden"}))
     with pytest.raises(ToolProviderCredentialValidationError) as raised:
         JoboProvider().validate_credentials(CREDS)
-    assert "rate limit" in str(raised.value)
-    assert "rejected the API key" not in str(raised.value)
+    assert "HTTP 403" in str(raised.value)
+    assert KEY not in str(raised.value)
 
 
-def test_a_server_error_surfaces_its_status(api):
-    api(reply(500, {"title": "boom"}))
-    with pytest.raises(ToolProviderCredentialValidationError) as raised:
-        JoboProvider().validate_credentials(CREDS)
-    assert "500" in str(raised.value)
+def test_a_rate_limit_does_not_reject_the_key(api):
+    mock = api(reply(429, {"retry_after_seconds": 500}))
+    JoboProvider().validate_credentials(CREDS)
+    assert len(mock.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "status, headers",
+    [(500, None), (502, None), (503, {"Retry-After": "5"}), (503, None)],
+)
+def test_a_search_outage_does_not_reject_the_key(api, status, headers):
+    # GET /api/connectors/filters answers 503 while the search backend is down.
+    api(reply(status, {"title": "Search temporarily unavailable"}, headers))
+    JoboProvider().validate_credentials(CREDS)
 
 
 def test_sandbox_key_is_accepted_when_the_sandbox_lacks_the_endpoint(api):
@@ -63,12 +72,10 @@ def test_any_other_404_is_a_failure(api):
         JoboProvider().validate_credentials(CREDS)
 
 
-def test_connection_failure_is_reported_without_the_key(api):
+def test_connection_failure_does_not_reject_the_key(api):
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused", request=request)
 
-    api(refuse)
-    with pytest.raises(ToolProviderCredentialValidationError) as raised:
-        JoboProvider().validate_credentials(CREDS)
-    assert "Could not get a response" in str(raised.value)
-    assert KEY not in str(raised.value)
+    mock = api(refuse)
+    JoboProvider().validate_credentials(CREDS)
+    assert len(mock.requests) == 3  # one try and two retries
